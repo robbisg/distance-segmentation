@@ -48,6 +48,10 @@ output_sim1 = Parallel(n_jobs=50)(delayed(sim.run_simulation_evlength)(length_st
 with open(savedir + 'output_sim1.mat', 'wb') as output:
     pickle.dump({'output_sim1': output_sim1}, output, pickle.HIGHEST_PROTOCOL)
 
+for rep in range(reps):
+    result = run_simulation_evlength(length_std_list, nstates_list,run_HMM, rep)
+
+
 # rerun Simulation 1 with a shorter TR, to identify if the finetune_width can be safely set to 1
 run_HMM=False
 output_sim1 = Parallel(n_jobs=50)(delayed(sim.run_simulation_evlength)(length_std_list, nstates_list,run_HMM, rep, TRfactor=0.5, finetune=0) for rep in range(0, reps))

@@ -11,6 +11,26 @@ from help_functions import fit_metrics_simulation, compute_fits_hmm, deltas_stat
 from brainiak.eventseg.event import EventSegment as HMM
 from importlib import reload
 
+
+def basic_simulation():
+
+    results = dict()
+    
+    real_bounds, subData, _ = generate_simulated_data_HRF(length_std=l, nstates=n, TRfactor=TRfactor, rep=rep)
+
+    states = gsbs_extra.GSBS(kmax=n, x=subData[0, :, :], finetune=finetune)
+    states.fit()
+
+    recovered_bounds = np.double(states.get_bounds(k=n)>0)
+    permut_accuracy, permut_zaccuracy, distance = fit_metrics_simulation(real_bounds, recovered_bounds)
+
+    results['perm_accuracy'] = permut_accuracy
+    results['perm_zaccuracy'] = permut_zaccurcy
+    results['distance'] = distance
+    results['real_bounds'] = states.bounds
+    results['real_states'] = deltas_states(real_bounds)
+
+
 # simulation 1, vary state length and estimate how accurately we can recover state boundaries
 def run_simulation_evlength(length_std, nstates_list, run_HMM, rep, TRfactor=1, finetune=1):
 
@@ -49,7 +69,7 @@ def run_simulation_evlength(length_std, nstates_list, run_HMM, rep, TRfactor=1, 
 
             if run_HMM is True:
                 ev = HMM(n, split_merge=False)
-                ev.fit(subData[0,:,:])
+                ev.fit(subData[0, :, :])
                 hmm_bounds = np.insert(np.diff(np.argmax(ev.segments_[0], axis=1)), 0, 0).astype(int)
                 res['sim_HMM'][idxl, idxn], res['simz_HMM'][idxl, idxn], res['dists_HMM'][idxl, idxn, 0:n] = fit_metrics_simulation(bounds, hmm_bounds)
 
@@ -66,62 +86,55 @@ def run_simulation_evlength(length_std, nstates_list, run_HMM, rep, TRfactor=1, 
 def run_simulation_compare_nstates( nstates_list, mindist, run_HMM, finetune, zs, rep):
 
     res2 = dict()
-    list = ['optimum_tdist','optimum_wac','optimum_mdist','optimum_meddist','optimum_mwu','optimum_LL_HMM','optimum_WAC_HMM',
-            'optimum_mdist_HMM','optimum_meddist_HMM','optimum_mwu_HMM','optimum_tdist_HMM',
-            'sim_GS_tdist', 'sim_GS_WAC', 'simz_GS_tdist', 'simz_GS_WAC',
-            'sim_HMM_LL','simz_HMM_LL','sim_HMMsplit_LL','simz_HMMsplit_LL','sim_HMM_WAC','simz_HMM_WAC',
-            'sim_HMMsplit_WAC','simz_HMMsplit_WAC','sim_HMM_tdist','simz_HMM_tdist','sim_HMMsplit_tdist','simz_HMMsplit_tdist']
-    for i in list:
-        res2[i]= np.zeros(len(nstates_list))
 
-    list2 = ['tdist', 'wac', 'mdist', 'meddist',  'LL_HMM', 'WAC_HMM', 'tdist_HMM', 'fit_W_mean', 'fit_W_std', 'fit_Ball_mean', 'fit_Ball_std', 'fit_Bcon_mean', 'fit_Bcon_std']
+    metrics = ['LL', 'WAC', 'tdist', 'mdist', 'meddist', 'mwu']
+    methods = ['HMM', 'GS']
+    types = ['optimum']
+
+    for metric, method, type_ in itertools.product(metrics, methods, types):
+        key = type_+"_"+metric+"_"+method
+        res2[key] = np.zeros(len(nstates_list))
+
+
+    metrics = ['LL', 'WAC', 'tdist']
+    methods = ['GS', 'HMM', 'HMMsplit']
+    types = ['sim', 'simz']
+
+    for metric, method, type_ in itertools.product(metrics, methods, types):
+        key = type_+"_"+metric+"_"+method
+        res2[key] = np.zeros(len(nstates_list))
+
+    
+
+    list2 = ['tdist', 'WAC', 'mdist', 'meddist',  'LL_HMM', 'WAC_HMM', 
+             'tdist_HMM', 'fit_W_mean', 'fit_W_std', 'fit_Ball_mean', 
+             'fit_Ball_std', 'fit_Bcon_mean', 'fit_Bcon_std']
     for i in list2:
         res2[i] = np.zeros([len(nstates_list), maxK+1])
 
     for idxl, l in enumerate(nstates_list):
         print(rep, l)
-        bounds, subData,_ = generate_simulated_data_HRF(nstates=l, rep=rep)
-        states = gsbs_extra.GSBS(x=subData[0,:,:], kmax=maxK, outextra=True, dmin=mindist, finetune=finetune)
+        real_bounds, subData,_ = generate_simulated_data_HRF(nstates=l, rep=rep)
+
+        data = subData[0, :, :]
+
+        states = gsbs_extra.GSBS(x=data, kmax=maxK, outextra=True, dmin=mindist, finetune=finetune)
         states.fit()
-        res2['sim_GS_tdist'][idxl],  res2['simz_GS_tdist'][idxl], dist = fit_metrics_simulation(bounds, states.deltas)
-        res2['sim_GS_WAC'][idxl], res2['simz_GS_WAC'][idxl], dist = fit_metrics_simulation(bounds, states.get_deltas(k=states.nstates_WAC))
+        res2['sim_GS_tdist'][idxl],  res2['simz_GS_tdist'][idxl], dist = \
+                fit_metrics_simulation(real_bounds, states.deltas)
+        res2['sim_GS_WAC'][idxl], res2['simz_GS_WAC'][idxl], dist = \
+                fit_metrics_simulation(real_bounds, states.get_deltas(k=states.optimum_WAC))
 
-        if run_HMM is True:
-            t=None
-            ind=None
+        for metric in ['tdist', 'WAC', 'meddist', 'mdist']:
 
-            for i in range(2, maxK):
-                res2['LL_HMM'][idxl, i], res2['WAC_HMM'][idxl, i],res2['tdist_HMM'][idxl, i], \
-                hmm_bounds, t, ind = compute_fits_hmm(subData[0, :, :], i, mindist, type='HMM', y=None, t1=t, ind1=ind, zs=zs)
+            res2[metric][idxl, :] = getattr(states, metric)
 
-            res2['optimum_LL_HMM'][idxl] = np.argmax(res2['LL_HMM'][idxl][2:90])+2
-            res2['optimum_WAC_HMM'][idxl] = np.argmax(res2['WAC_HMM'][idxl])
-            res2['optimum_tdist_HMM'][idxl] = np.argmax(res2['tdist_HMM'][idxl])
+            attr = "optimum_" + metric
+            optimum = getattr(states, attr)
 
-            i = int(res2['optimum_LL_HMM'][idxl])
+            key = "optimum_" + metric + "_GS"
+            res2[key][idxl] = optimum
 
-
-            _, _, _, hmm_bounds, t, ind = compute_fits_hmm(data=subData[0, :, :], k=i, mindist=1, type='HMM', y=None, t1=t, ind1=ind)
-            res2['sim_HMM_LL'][idxl],  res2['simz_HMM_LL'][idxl], dist = fit_metrics_simulation(bounds, hmm_bounds)
-            _, _, _, hmm_bounds, t, ind = compute_fits_hmm(data=subData[0, :, :], k=i, mindist=1, type='HMMsplit', y=None, t1=t, ind1=ind)
-            res2['sim_HMMsplit_LL'][idxl],  res2['simz_HMMsplit_LL'][idxl], dist = fit_metrics_simulation(bounds, hmm_bounds)
-
-            i = int(res2['optimum_WAC_HMM'][idxl])
-            _, _, _, hmm_bounds, t, ind = compute_fits_hmm(data=subData[0, :, :], k=i, mindist=1, type='HMM', y=None, t1=t, ind1=ind)
-            res2['sim_HMM_WAC'][idxl],  res2['simz_HMM_WAC'][idxl], dist = fit_metrics_simulation(bounds, hmm_bounds)
-            _, _, _, hmm_bounds, t, ind = compute_fits_hmm(data=subData[0, :, :], k=i, mindist=1, type='HMMsplit', y=None, t1=t, ind1=ind)
-            res2['sim_HMMsplit_WAC'][idxl],  res2['simz_HMMsplit_WAC'][idxl], dist = fit_metrics_simulation(bounds, hmm_bounds)
-
-            i = int(res2['optimum_tdist_HMM'][idxl])
-            _, _, _, hmm_bounds, t, ind = compute_fits_hmm(data=subData[0, :, :], k=i, mindist=1, type='HMM', y=None, t1=t, ind1=ind)
-            res2['sim_HMM_tdist'][idxl],  res2['simz_HMM_tdist'][idxl], dist = fit_metrics_simulation(bounds, hmm_bounds)
-            _, _, _, hmm_bounds, t, ind = compute_fits_hmm(data=subData[0, :, :], k=i, mindist=1, type='HMMsplit', y=None, t1=t, ind1=ind)
-            res2['sim_HMMsplit_tdist'][idxl],  res2['simz_HMMsplit_tdist'][idxl], dist = fit_metrics_simulation(bounds, hmm_bounds)
-
-        res2['optimum_tdist'][idxl]=states.nstates
-        res2['optimum_wac'][idxl]=states.nstates_WAC
-        res2['optimum_meddist'][idxl] = states.nstates_meddist
-        res2['optimum_mdist'][idxl] = states.nstates_mdist
 
         res2['fit_W_mean'][idxl, :] = states.all_m_W
         res2['fit_W_std'][idxl, :] = states.all_sd_W
@@ -130,10 +143,41 @@ def run_simulation_compare_nstates( nstates_list, mindist, run_HMM, finetune, zs
         res2['fit_Bcon_mean'][idxl, :] = states.all_m_Bcon
         res2['fit_Bcon_std'][idxl, :] = states.all_sd_Bcon
 
-        res2['tdist'][idxl,:]=states.tdists
-        res2['wac'][idxl, :] = states.WAC
-        res2['mdist'][idxl,:]=states.mdist
-        res2['meddist'][idxl,:]=states.meddist
+        # HMM
+        t = None
+        ind = None
+
+        for i in range(2, maxK):
+            res2['LL_HMM'][idxl, i], res2['WAC_HMM'][idxl, i], res2['tdist_HMM'][idxl, i], \
+            hmm_bounds, t, ind = compute_fits_hmm(data, i, mindist, type='HMM', y=None, t1=t, ind1=ind, zs=zs)
+
+        for metric in ['LL', 'WAC', 'tdist']:
+            keyword = "%s_HMM" % (metric)
+            optimum_ncluster = np.argmax(res2[keyword][idxl])
+    
+            if metric == 'LL':
+                optimum_ncluster = np.argmax(res2[keyword][idxl][2:90]) + 2
+
+            res2['optimum_%s' % keyword] = optimum_ncluster
+
+            for method in ['HMM', 'HMMsplit']:
+
+                _, _, _, recovered_bounds, t, ind = compute_fits_hmm(
+                                                        data=data, 
+                                                        k=optimum_ncluster, 
+                                                        mindist=1, 
+                                                        type=method, 
+                                                        y=None, 
+                                                        t1=t, 
+                                                        ind1=ind)
+                
+                simm, simz, dist = fit_metrics_simulation(real_bounds, recovered_bounds)
+
+                keyword = 'sim_%s_%s' % (metric, method)
+                res2[keyword][idxl] = simm
+
+                keyword = 'simz_%s_%s' % (metric, method)
+                res2[keyword][idxl] = simz
 
     return res2
 

@@ -288,16 +288,19 @@ class GSBS:
                 self.all_sd_W[k] = std(t[same])
                 self.all_sd_Bcon[k] = std(t[diff])
                 self.all_sd_Ball[k] = std(t[alldiff])
-                self.WAC[k] = mean(t[same])-mean(t[alldiff])
+                self.WAC[k] = mean(t[same]) - mean(t[alldiff])
                 self.mdist[k] = mean(t[same]) - mean(t[diff])
                 self.meddist[k] = median(t[same]) - median(t[diff])
 
         self._argmax = self._tdists.argmax()
 
         if self.outextra is True:
-            self.nstates_WAC = self.WAC.argmax()
-            self.nstates_mdist = self.mdist.argmax()
-            self.nstates_meddist = self.meddist.argmax()
+            self.optimum_WAC = self.WAC.argmax()
+            self.optimum_mdist = self.mdist.argmax()
+            self.optimum_meddist = self.meddist.argmax()
+            self.optimum_tdist = self._tdists.argmax()
+        
+        self.tdists = self._tdists
 
 
     @staticmethod
